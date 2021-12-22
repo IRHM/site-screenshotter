@@ -1,0 +1,2 @@
+# just-eat-application-screenshotter
+ 
