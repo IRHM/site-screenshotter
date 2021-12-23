@@ -6,7 +6,7 @@
   "scripts": {
     "run": "node main.js"
   },
-  "type": "commonjs",
+  "type": "module",
   "author": "",
   "license": "ISC",
   "dependencies": {
