@@ -1,3 +1,8 @@
+/**
+ * USE playwright.js!
+ * IF YOU WANT TO USE THIS, INSTALL PUPPETEER.
+ */
+
 import dotenv from "dotenv";
 import puppeteer from "puppeteer";
 import nodemailer from "nodemailer";
