@@ -1,11 +1,19 @@
 version: "3.8"
 
 services:
-  jeas-notifier:
-    build: .
+  # jeas-notifier-puppeteer:
+  #   build: .
+  #   container_name: "jeas-notifier"
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   security_opt:
+  #     - seccomp:./chrome.json
+  jeas-notifier-playwright:
+    build:
+      context: .
+      dockerfile: "./Dockerfile.playwright"
     container_name: "jeas-notifier"
     restart: unless-stopped
     env_file:
       - .env
-    security_opt:
-      - seccomp:./chrome.json
