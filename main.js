@@ -1,13 +1,18 @@
-/**
- * USE playwright.js!
- * IF YOU WANT TO USE THIS, INSTALL PUPPETEER.
- */
-
-import dotenv from "dotenv";
-import puppeteer from "puppeteer";
+import { firefox } from "playwright";
 import nodemailer from "nodemailer";
 import path from "path";
 import chalk from "chalk";
+import ENV from "./.env.js";
+
+function log(msg, ...optionalParams) {
+  const wLeadingZero = (n) => (n <= 9 ? `0${n}` : n);
+
+  const dt = new Date();
+  const date = `${wLeadingZero(dt.getDate())}/${wLeadingZero(dt.getMonth() + 1)}`;
+  const time = `${wLeadingZero(dt.getHours())}:${wLeadingZero(dt.getMinutes())}:${wLeadingZero(dt.getSeconds())}`;
+
+  console.log(`${chalk.bold.italic.dim(date, time)} ${msg}`, ...optionalParams);
+}
 
 function sleep(hours) {
   const ms = hours * 60000 * 60;
@@ -15,73 +20,81 @@ function sleep(hours) {
 }
 
 (async () => {
-  dotenv.config();
-
   while (true) {
-    const sleepHrs = 5;
-
     try {
-      const browser = await puppeteer.launch();
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36"
-      );
-      await page.setViewport({ width: 1280, height: 1500 });
-      await page.goto("https://www.just-eat.co.uk/courier");
+      const browser = await firefox.launch({ headless: true });
+      const page = await browser.newPage({
+        viewport: ENV.req.viewport,
+        userAgent: ENV.req.ua,
+        extraHTTPHeaders: ENV.req.headers
+      });
+
+      await page.goto(ENV.site);
 
       // Wait for all elements required
-      const signupForm = await page.waitForSelector("#signupForm");
+      const form = page.locator(ENV.toScreenshot);
+      await form.waitFor();
 
-      // Select items in form that make vehicle menu popup
-      await page.select("select[name=city_driver_operates]", process.env.CITY_TO_CHECK);
-      await page.select("select[name=age_UK]", "Between 18 and 20 years old");
+      // Select items in form dropdowns
+      for (const f in ENV.form) {
+        if (Object.hasOwnProperty.call(ENV.form, f)) {
+          const el = ENV.form[f];
 
-      // Screenshot signup form
-      // signupForm.screenshot, would show a white box in image, so clipping manually instead.
+          switch (el.type) {
+            case "dropdown":
+              await page.selectOption(el.selector, el.value);
+              break;
+            case "text":
+              await page.fill(el.selector, el.value);
+              break;
+          }
+        }
+      }
+
+      // Screenshot form
       const screenshotOut = path.resolve("latest.png");
-      const sfCoords = await signupForm.boundingBox();
-      await page.screenshot({
-        path: screenshotOut,
-        clip: { x: sfCoords.x, y: sfCoords.y, width: sfCoords.width, height: sfCoords.height }
-      });
+      await form.screenshot({ path: screenshotOut });
 
       await browser.close();
 
       notify(screenshotOut);
-
-      console.log(chalk.green.bold(`Sending notification, sleeping for ${sleepHrs} hours...`));
     } catch (err) {
-      console.log("An Error Occurred!", err);
+      log("An Error Occurred!", err);
     }
 
-    await sleep(sleepHrs);
+    log(chalk.green.bold(`Sleeping for ${ENV.delay} hours before checking again.`));
+    await sleep(ENV.delay);
   }
 })();
 
 function notify(ss) {
+  const { host, port, user, pass, to, subject } = ENV.mail;
+
+  if (!host || !port || !user || !pass || !to) {
+    log(chalk.red("Mail configuration missing, skipping notify."));
+    return;
+  }
+
   let transporter = nodemailer.createTransport({
-    host: process.env.MAIL_HOST,
-    port: 465,
+    host: host,
+    port: port,
     secure: true,
     auth: {
-      user: process.env.MAIL_USER,
-      pass: process.env.MAIL_PASS
+      user: user,
+      pass: pass
     }
   });
 
   transporter.verify((err, success) => {
-    if (err)
-      console.log(
-        chalk.red(`Error connecting to mail server for user ${process.env.MAIL_USER}: `, JSON.stringify(err))
-      );
+    if (err) log(chalk.red(`Error connecting to mail server for user ${user}: `, JSON.stringify(err)));
   });
 
   const ssFileName = path.basename(ss);
   const ssCid = ssFileName + "@";
   const msg = {
-    from: process.env.MAIL_USER,
-    to: process.env.MAIL_TO,
-    subject: process.env.MAIL_SUBJECT,
+    from: user,
+    to: to,
+    subject: subject || "Site Update",
     attachments: [
       {
         path: ss,
@@ -90,16 +103,16 @@ function notify(ss) {
       }
     ],
     html: `
-      <h2>Latest Update On Ebike Status</h2>
+      <h2>${subject || "Site Update"}</h2>
       <img src="cid:${ssCid}" />
     `
   };
 
   transporter.sendMail(msg, (err, info) => {
     if (err) {
-      console.log(chalk.red("Error sending mail: ", err.message));
+      log(chalk.red("Error sending mail: ", err.message));
     } else {
-      console.log(chalk.bold("Sent email", info.messageId));
+      log(chalk.bold("Sent email", info.messageId));
     }
   });
 }
